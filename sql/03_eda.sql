@@ -90,7 +90,44 @@ WHERE BINARY region <> BINARY UPPER(region);
 
 SELECT DISTINCT region FROM dim_location;
 
+-- ------------------------------------------------------------
+-- 1.6 TRANSACCIÓN: corrección controlada de ship_mode en Tables
+-- El equipo de logística reportó una posible inconsistencia en el
+-- método de envío de la sub-categoría "Tables" (la de mayores
+-- pérdidas, ver Bloque 3). Antes de aplicar el cambio de forma
+-- definitiva, lo envolvemos en una transacción para poder revisar
+-- el resultado con un SELECT y decidir si confirmar (COMMIT) o
+-- deshacer (ROLLBACK) sin dejar la base de datos en un estado
+-- intermedio.
+-- ------------------------------------------------------------
+START TRANSACTION;
 
+UPDATE fact_sales f
+INNER JOIN dim_products p ON f.product_id = p.product_id
+SET f.ship_mode = 'Standard Class'
+WHERE p.sub_category = 'Tables'
+  AND f.ship_mode = 'Same Day';
+
+-- Verificación antes de confirmar el cambio
+SELECT f.row_id, p.sub_category, f.ship_mode
+FROM fact_sales f
+INNER JOIN dim_products p ON f.product_id = p.product_id
+WHERE p.sub_category = 'Tables'
+  AND f.ship_mode = 'Standard Class';
+
+-- El UPDATE sí modificó 21 filas correctamente, pero tras revisar
+-- el resultado se decide NO confirmar el cambio: se trataba de una
+-- prueba para validar que la corrección era técnicamente viable,
+-- no de un error real en los datos. Se revierte con ROLLBACK para
+-- dejar la base de datos exactamente como estaba.
+ROLLBACK;
+
+-- Verificación post-rollback: los datos deben quedar como estaban
+SELECT f.row_id, p.sub_category, f.ship_mode
+FROM fact_sales f
+INNER JOIN dim_products p ON f.product_id = p.product_id
+WHERE p.sub_category = 'Tables'
+  AND f.ship_mode = 'Same Day';
 
 -- ============================================================
 -- BLOQUE 2: EDA DESCRIPTIVO
@@ -384,3 +421,6 @@ SELECT
     fn_clasificar_margen(sales, profit) AS clasificacion
 FROM fact_sales
 LIMIT 10;
+
+
+
