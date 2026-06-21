@@ -6,16 +6,6 @@ dimensional (esquema en estrella) sobre las ventas de un Superstore de
 retail en USA durante el período 2014-2017, para responder una pregunta de
 negocio central: **¿dónde gana y dónde pierde dinero la empresa?**
 
-## Componentes del proyecto
-
-| Archivo | Contenido |
-|---|---|
-| `01_schema.sql` | Modelo dimensional: tablas, PKs, FKs, constraints, índice |
-| `02_data.sql` | Carga del CSV a staging y transformación al modelo dimensional |
-| `03_eda.sql` | Calidad de datos, EDA, consultas de negocio, 2 vistas y 1 función |
-| `model.png` | Diagrama ER del esquema en estrella |
-| `README.md` | Este documento |
-
 ## 2. Dataset
 - **Fuente:** [Kaggle - Sample Superstore](https://www.kaggle.com/datasets)
 - **Filas:** 9,994 transacciones | **Período:** 2014-01-03 a 2017-12-30
@@ -84,31 +74,32 @@ Consultas analíticas (03_eda.sql)
 
 **1. Furniture es la categoría con peor margen, a pesar de vender casi igual que las demás**
 Genera un volumen de ventas similar a Technology y Office Supplies, pero su
-margen de ganancia es aproximadamente 7 veces menor (2.5% vs ~17%).
-*Qué hacer:* revisar la política de descuentos de Furniture específicamente,
-en vez de aplicar el mismo criterio que al resto de categorías.
+margen de ganancia es aproximadamente 7 veces menor (2.5% vs ~17%). Esto
+sugiere que la política de descuentos de Furniture necesita revisarse de
+forma específica, en vez de aplicarle el mismo criterio que al resto de
+categorías.
 
 **2. La región Central es la menos rentable, pese a no ser la que menos vende**
 West lidera en margen (14.94%), mientras que Central, aunque vende más que
-South, tiene el margen más bajo de todas las regiones (7.92%).
-*Qué hacer:* auditar la estrategia comercial de Central (descuentos, mix de
-producto) tomando como referencia las prácticas de West.
+South, tiene el margen más bajo de todas las regiones (7.92%). Vale la pena
+auditar qué está haciendo Central distinto a West en términos de descuentos
+y mix de producto, para entender de dónde viene esa diferencia.
 
 **3. La sub-categoría "Tables" concentra el 96% de las pérdidas de Furniture**
 Con un margen de -8.56%, es la única sub-categoría con pérdida de doble
 dígito porcentual, y explica casi por completo el bajo margen de toda la
 categoría Furniture. En el extremo opuesto, Technology - Copiers logra el
-mejor margen del negocio (+37.20%).
-*Qué hacer:* renegociar costes de aprovisionamiento de Tables o limitar el
-descuento máximo permitido en esa sub-categoría.
+mejor margen del negocio (+37.20%). Dos caminos posibles aquí: renegociar
+costes de aprovisionamiento de Tables, o directamente limitar el descuento
+máximo permitido en esa sub-categoría.
 
 **Causa raíz identificada:** a partir de un descuento superior al 20%, la
 ganancia promedio por venta se vuelve negativa. Las ventas sin descuento
 generan en conjunto +$320,988, mientras que las ventas con descuento mayor
-al 20% generan -$135,376 combinadas — los descuentos agresivos no están
-funcionando como estrategia comercial, están generando pérdidas netas.
-*Qué hacer:* establecer un tope de descuento del 20% como política general,
-salvo excepciones justificadas y aprobadas caso por caso.
+al 20% generan -$135,376 combinadas. Los descuentos agresivos no están
+funcionando como estrategia comercial — están generando pérdidas netas, y
+un tope del 20% (con excepciones justificadas caso por caso) parece el
+punto de partida más razonable para frenar esto.
 
 ## 7. Cómo ejecutar
 
