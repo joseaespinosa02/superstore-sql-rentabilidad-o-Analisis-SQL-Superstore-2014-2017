@@ -134,11 +134,13 @@ El proyecto está dividido en capas bien diferenciadas, siguiendo el flujo
 staging → modelo dimensional → vistas → análisis:
 
 ```
-sql/
-├── 01_schema.sql   # Creación de tablas, PKs, FKs, constraints, índice
-├── 02_data.sql     # Carga del CSV a staging y transformación al modelo dimensional
-├── 03_eda.sql      # Calidad de datos, EDA, consultas de negocio, vistas y función
-└── README.md
+superstore-sql-rentabilidad-o-Analisis-SQL-Superstore-2014-2017/
+├── README.md
+├── model.png            # Diagrama ER del esquema en estrella
+└── sql/
+    ├── 01_schema.sql    # Creación de tablas, PKs, FKs, constraints, índice
+    ├── 02_data.sql      # Carga del CSV a staging y transformación al modelo dimensional
+    └── 03_eda.sql       # Calidad de datos, EDA, consultas de negocio, vistas y función
 ```
 
 ## 9. Técnicas SQL aplicadas
