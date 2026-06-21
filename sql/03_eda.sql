@@ -13,7 +13,8 @@ USE superstore_db;
 
 -- ------------------------------------------------------------
 -- 1.1 Detección de valores nulos en columnas críticas de fact_sales
--- Resultado obtenido: 0 nulos en todas las columnas
+-- Si alguna de estas columnas tuviera nulos, las FKs hacia las
+-- dimensiones quedarían rotas, así que es lo primero que reviso.
 -- ------------------------------------------------------------
 SELECT
     SUM(CASE WHEN customer_id IS NULL THEN 1 ELSE 0 END) AS nulos_customer,
@@ -32,10 +33,9 @@ WHERE postal_code IS NULL;
 
 -- ------------------------------------------------------------
 -- 1.2 Detección de duplicados lógicos con RANK() OVER (PARTITION BY...)
--- Resultado obtenido: 8 casos de mismo (order_id, product_id, customer_id)
--- con row_id distinto. Tras inspección, corresponden a líneas de pedido
--- separadas del mismo producto dentro de la misma orden (comportamiento
--- de compra real, NO son errores de carga). No se eliminan.
+-- Busco filas que compartan order_id, product_id y customer_id, ya
+-- que en teoría cada combinación debería corresponder a una sola
+-- línea de pedido.
 -- ------------------------------------------------------------
 SELECT *
 FROM (
@@ -49,10 +49,16 @@ FROM (
 ) ranked
 WHERE rnk > 1;
 
+-- Esta consulta devolvió 8 filas. Al revisarlas, corresponden a
+-- líneas de pedido separadas del mismo producto dentro de la misma
+-- orden (comportamiento de compra real, no errores de carga), así
+-- que no se eliminan.
+
 
 -- ------------------------------------------------------------
 -- 1.3 Validación de fechas (tipos y rango esperado)
--- Resultado obtenido: 2014-01-03 a 2017-12-30 (consistente con el dataset)
+-- El dataset cubre 2014-2017, así que reviso que no haya fechas
+-- fuera de ese rango por algún error de conversión en STR_TO_DATE.
 -- ------------------------------------------------------------
 SELECT MIN(full_date) AS fecha_minima, MAX(full_date) AS fecha_maxima
 FROM dim_calendar;
@@ -60,16 +66,15 @@ FROM dim_calendar;
 SELECT *
 FROM dim_calendar
 WHERE YEAR(full_date) NOT BETWEEN 2014 AND 2017;
--- Resultado esperado: 0 filas (ninguna fecha fuera de rango)
+-- No devolvió ninguna fila: todas las fechas caen dentro del rango
+-- esperado (2014-01-03 a 2017-12-30).
 
 
 -- ------------------------------------------------------------
 -- 1.4 Outliers / valores extremos en profit
--- Resultado: se identificaron transacciones con pérdidas extremas
--- (hasta -$6,599) asociadas a descuentos del 70-80%. NO son errores
--- de datos, sino información de negocio válida: ventas con descuentos
--- agresivos que generaron pérdida neta. Se documentan y se analizan
--- como parte del EDA de rentabilidad (Bloque 3), no se corrigen.
+-- Reviso ventas con pérdidas mayores a $1,000 para distinguir si
+-- son errores de carga o pérdidas reales asociadas a descuentos
+-- agresivos.
 -- ------------------------------------------------------------
 SELECT row_id, order_id, customer_id, product_id, location_id, date_id,
        sales, quantity, discount, profit
@@ -77,18 +82,24 @@ FROM fact_sales
 WHERE profit < -1000
 ORDER BY profit ASC;
 
+-- Las pérdidas más extremas llegan hasta -$6,599 y están asociadas
+-- a descuentos del 70-80%. No son errores de datos, sino información
+-- de negocio real que se retoma en el Bloque 3.
+
 
 -- ------------------------------------------------------------
 -- 1.5 UPDATE de validación: estandarización de formato en 'region'
--- Verificamos que no haya inconsistencias de mayúsculas/minúsculas.
--- Resultado: 0 filas afectadas -> el dataset ya tenía 'region'
--- correctamente formateado, no se detectaron inconsistencias.
+-- Reviso que no haya inconsistencias de mayúsculas/minúsculas en
+-- 'region', ya que eso rompería los GROUP BY del Bloque 3.
 -- ------------------------------------------------------------
 UPDATE dim_location
 SET region = UPPER(region)
 WHERE BINARY region <> BINARY UPPER(region);
 
 SELECT DISTINCT region FROM dim_location;
+-- 0 filas afectadas: el dataset ya tenía 'region' correctamente
+-- formateado desde el origen.
+
 
 -- ------------------------------------------------------------
 -- 1.6 TRANSACCIÓN: corrección controlada de ship_mode en Tables
@@ -129,6 +140,8 @@ INNER JOIN dim_products p ON f.product_id = p.product_id
 WHERE p.sub_category = 'Tables'
   AND f.ship_mode = 'Same Day';
 
+
+
 -- ============================================================
 -- BLOQUE 2: EDA DESCRIPTIVO
 -- ============================================================
@@ -148,8 +161,8 @@ FROM fact_sales;
 
 -- ------------------------------------------------------------
 -- 2.2 Rentabilidad por categoría (INNER JOIN)
--- INSIGHT #1: Furniture genera casi el mismo volumen de ventas que
--- Technology y Office Supplies, pero su margen de ganancia es ~7x menor.
+-- Furniture genera casi el mismo volumen de ventas que Technology
+-- y Office Supplies, pero su margen de ganancia es ~7x menor.
 -- ------------------------------------------------------------
 SELECT
     p.category,
@@ -170,9 +183,10 @@ ORDER BY ventas_totales DESC;
 
 -- ------------------------------------------------------------
 -- 3.1 Rentabilidad por sub-categoría (drill-down)
--- INSIGHT #3 (el más fuerte): Furniture - Tables es responsable del 96%
--- de las pérdidas de la categoría Furniture (-$17,726 de -$18,451 totales).
--- Es la única sub-categoría con margen negativo de doble dígito (-8.56%).
+-- Este es el hallazgo más fuerte del análisis: Furniture - Tables es
+-- responsable del 96% de las pérdidas de la categoría Furniture
+-- (-$17,726 de -$18,451 totales). Es la única sub-categoría con
+-- margen negativo de doble dígito (-8.56%). En el otro extremo,
 -- Technology - Copiers logra el mejor margen del negocio (+37.20%).
 -- ------------------------------------------------------------
 SELECT
@@ -190,9 +204,9 @@ ORDER BY ganancia_total ASC;
 
 -- ------------------------------------------------------------
 -- 3.2 Rentabilidad por región (INNER JOIN)
--- INSIGHT #2: West es la región más rentable (14.94% de margen),
--- mientras que Central, aunque vende más que South, tiene el margen
--- más bajo de todas las regiones (7.92%).
+-- West es la región más rentable (14.94% de margen), mientras que
+-- Central, aunque vende más que South, tiene el margen más bajo de
+-- todas las regiones (7.92%).
 -- ------------------------------------------------------------
 SELECT
     l.region,
@@ -236,9 +250,10 @@ SELECT * FROM ranking WHERE rank_peores <= 5;
 
 -- ------------------------------------------------------------
 -- 3.4 Impacto del descuento en la rentabilidad (CASE + agregación)
--- INSIGHT CLAVE: a partir de 21% de descuento, la ganancia promedio
--- por venta se vuelve NEGATIVA. Ventas sin descuento generan +$320,988
--- en total; ventas con descuento >20% generan -$135,376 combinadas.
+-- Esta es la causa raíz detrás de los hallazgos anteriores: a partir
+-- de un 21% de descuento, la ganancia promedio por venta se vuelve
+-- negativa. Las ventas sin descuento generan +$320,988 en total;
+-- las que tienen descuento mayor al 20% generan -$135,376 combinadas.
 -- ------------------------------------------------------------
 SELECT
     CASE
@@ -421,6 +436,3 @@ SELECT
     fn_clasificar_margen(sales, profit) AS clasificacion
 FROM fact_sales
 LIMIT 10;
-
-
-
